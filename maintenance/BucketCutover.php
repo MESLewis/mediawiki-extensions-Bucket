@@ -24,9 +24,11 @@ class BucketCutover extends Maintenance {
 	public function execute() {
 		$dbw = $this->getDB( DB_PRIMARY );
 
+		// TODO this should be able to be even fancier by only locking the non-latest rows
 		$res = $dbw->newSelectQueryBuilder()
 					->from( 'bucket_schemas' )
 					->select( [ 'table_name', 'table_version', 'schema_json' ] )
+					->where( '`table_name` IN (SELECT `table_name` FROM `bucket_schemas` GROUP BY `table_name` HAVING COUNT(*) > 1)' )
 					->forUpdate()
 					->caller( __METHOD__ )
 					->fetchResultSet();
