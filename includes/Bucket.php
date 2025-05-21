@@ -203,6 +203,7 @@ class Bucket {
 				unset( $tablesToDelete[self::MESSAGE_BUCKET] );
 			} else {
 				$tablesToDelete[] = self::MESSAGE_BUCKET;
+				$versions[self::MESSAGE_BUCKET] = 0;
 			}
 
 			if ( count( $tablesToDelete ) > 0 ) {
