@@ -130,7 +130,7 @@ class Bucket {
 			$fields = [];
 			$fieldNames = $res->getFieldNames();
 			foreach ( $fieldNames as $fieldName ) {
-				// TODO: match on type, not just existence
+				// TODO: match on type, not just existence, what do we do if its wrong? The DB will coerce it if it can, or it'll be a default value.
 				$fields[ $fieldName ] = true;
 			}
 			foreach ( $tableData as $idx => $singleData ) {
@@ -173,7 +173,6 @@ class Bucket {
 			// Remove the bucket_hash entry so we can it as a list of removed buckets at the end.
 			unset( $bucket_hash[ $tableName ] );
 
-			// TODO: does behavior here depend on DBO_TRX?
 			$dbw->newDeleteQueryBuilder()
 				->deleteFrom( $dbw->addIdentifierQuotes( $dbTableName ) )
 				->where( [ '_page_id' => $pageId ] )
@@ -296,7 +295,6 @@ class Bucket {
 			->caller( __METHOD__ )
 			->field( 'schema_json' )
 			->fetchField();
-		// TODO also check if bucket__$bucketName exists
 		if ( !$schema ) {
 			return true;
 		} else {
@@ -406,8 +404,6 @@ class Bucket {
 				->caller( __METHOD__ )
 				->execute();
 			$dbw->query( "DROP TABLE IF EXISTS $tableName" );
-		} else {
-			// TODO: Throw error?
 		}
 	}
 
@@ -696,7 +692,6 @@ class Bucket {
 				if ( $op == '!=' ) {
 					return "($columnName IS NOT NULL)";
 				}
-				// TODO if op is something other than equals throw warning?
 				return "($columnName IS NULL)";
 			} elseif ( $columnData['repeated'] == true ) {
 				if ( !is_numeric( $value ) ) {
@@ -919,7 +914,6 @@ class Bucket {
 			->options( $OPTIONS )
 			->caller( __METHOD__ )
 			->setMaxExecutionTime( 500 );
-		// TODO should probably be all in a single join call? IDK.
 		foreach ( $LEFT_JOINS as $alias => $conds ) {
 			$tmp->leftJoin( $TABLES[$alias], $alias, $conds );
 		}
@@ -927,8 +921,6 @@ class Bucket {
 			$orderName = self::sanitizeColumnName( $data['orderBy']['fieldName'], $fieldNamesToTables, $schemas )['fullName'];
 			if ( $orderName != false ) {
 				$tmp->orderBy( $orderName, $data['orderBy']['direction'] );
-			} else {
-				// TODO throw warning
 			}
 		}
 		file_put_contents( MW_INSTALL_PATH . '/cook.txt', 'Query: ' . print_r( $tmp->getSQL(), true ) . "\n", FILE_APPEND );

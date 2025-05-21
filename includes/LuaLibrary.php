@@ -29,7 +29,10 @@ class LuaLibrary extends LibraryBase {
 				// Add the Bucket page as a "template" used on this page. This will get us linksUpdate scheduled for free when the Bucket page changes.
 				$title = MediaWikiServices::getInstance()->getTitleParser()->parseTitle( $table_name, NS_BUCKET );
 				$bucketPage = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromLinkTarget( $title );
-				$parserOutput->addTemplate( $title, $bucketPage->getId(), $bucketPage->getRevisionRecord()->getId() );
+				$bucketRevisionRecord = $bucketPage->getRevisionRecord();
+				if ( $bucketRevisionRecord != null ) {
+					$parserOutput->addTemplate( $title, $bucketPage->getId(), $bucketRevisionRecord->getId() );
+				}
 			} catch ( MalformedTitleException $e ) {
 				// Just ignore it, an error will be logged later
 			}
@@ -56,7 +59,7 @@ class LuaLibrary extends LibraryBase {
 			}
 			$rows = $ret[1];
 			return [ self::convertToLuaTable( $rows ) ];
-		} catch ( QueryException $e ) { // TODO also catch db exceptions?
+		} catch ( QueryException $e ) {
 			return [ 'error' => $e->getMessage() ];
 		}
 	}
