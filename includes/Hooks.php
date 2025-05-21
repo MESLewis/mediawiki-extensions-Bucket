@@ -165,7 +165,7 @@ class Hooks implements
 	}
 
 	/**
-	 * @see https://www.mediawiki.org/wiki/Manual:Hooks/SidebarBeforeOutput
+	 * @see https://www.mediawiki.org/wiki/Manual:Hooks/SkinBuildSidebar
 	 *
 	 * @param Skin $skin
 	 * @param array &$bar

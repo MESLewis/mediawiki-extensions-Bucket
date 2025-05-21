@@ -3,6 +3,8 @@
 namespace MediaWiki\Extension\Bucket;
 
 use MediaWiki\Extension\Scribunto\Engines\LuaCommon\LibraryBase;
+use MediaWiki\MediaWikiServices;
+use MediaWiki\Title\MalformedTitleException;
 
 class LuaLibrary extends LibraryBase {
 	public function register() {
@@ -23,9 +25,14 @@ class LuaLibrary extends LibraryBase {
 		}
 		$sub = $builder['subversion'];
 		if ( !array_key_exists( $table_name, $bucketPuts ) ) {
-			// TODO: This would allow WhatLinksHere to be used for a list of pages that put to this bucket.
-			//TODO: Is that a good idea?
-			// $parserOutput->addLink(new TitleValue( NS_BUCKET, "Recipe"));
+			try {
+				// Add the Bucket page as a "template" used on this page. This will get us linksUpdate scheduled for free when the Bucket page changes.
+				$title = MediaWikiServices::getInstance()->getTitleParser()->parseTitle( $table_name, NS_BUCKET );
+				$bucketPage = MediaWikiServices::getInstance()->getWikiPageFactory()->newFromLinkTarget( $title );
+				$parserOutput->addTemplate( $title, $bucketPage->getId(), $bucketPage->getRevisionRecord()->getId() );
+			} catch ( MalformedTitleException $e ) {
+				// Just ignore it, an error will be logged later
+			}
 			$bucketPuts[ $table_name ] = [];
 		}
 		$bucketPuts[ $table_name ][] = [ 'sub' => $sub, 'data' => $data ];
@@ -35,7 +42,19 @@ class LuaLibrary extends LibraryBase {
 	public function bucketRun( $data ): array {
 		try {
 			$data = self::convertFromLuaTable( $data );
-			$rows = Bucket::runSelect( $data );
+			$ret = Bucket::runSelect( $data );
+			// Create links to the Buckets we are reading from
+			$backlinks = $ret[0];
+			$parserOutput = $this->getParser()->getOutput();
+			foreach ( $backlinks as $table_name ) {
+				try {
+					$title = MediaWikiServices::getInstance()->getTitleParser()->parseTitle( $table_name, NS_BUCKET );
+					$parserOutput->addLink( $title );
+				} catch ( MalformedTitleException $e ) {
+					// Ignore it
+				}
+			}
+			$rows = $ret[1];
 			return [ self::convertToLuaTable( $rows ) ];
 		} catch ( QueryException $e ) { // TODO also catch db exceptions?
 			return [ 'error' => $e->getMessage() ];

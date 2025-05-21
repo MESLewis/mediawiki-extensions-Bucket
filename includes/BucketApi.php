@@ -10,6 +10,7 @@ use Parser;
 use ParserOptions;
 use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\ParamValidator\TypeDef\IntegerDef;
+use Wikimedia\Rdbms\SelectQueryBuilder;
 
 class BucketApi extends ApiBase {
 
@@ -30,8 +31,13 @@ class BucketApi extends ApiBase {
 
 			$dbw = MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnectionRef( DB_PRIMARY );
 
-			$res = $dbw->select( 'bucket_schemas', [ 'table_name', 'schema_json' ], [ 'table_name' => $bucket ] );
-			// TODO: Early error return if bucket isn't valid
+			$res = $dbw->newSelectQueryBuilder()
+				->from( 'bucket_schemas' )
+				->select( [ 'table_name', 'table_version', 'schema_json' ] )
+				->where( [ 'table_name' => $bucket ] )
+				->orderBy( 'table_version', SelectQueryBuilder::SORT_DESC )
+				->caller( __METHOD__ )
+				->fetchResultSet();
 			$schemas = [];
 			foreach ( $res as $row ) {
 				$schemas[$row->table_name] = json_decode( $row->schema_json, true );

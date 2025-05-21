@@ -5,6 +5,7 @@ namespace MediaWiki\Extension\Bucket;
 use LogicException;
 use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\IDatabase;
+use Wikimedia\Rdbms\SelectQueryBuilder;
 
 class Bucket {
 	public const EXTENSION_DATA_KEY = 'bucket:puts';
@@ -30,6 +31,7 @@ class Bucket {
 	];
 
 	private static $allSchemas = [];
+	private static $allVersions = [];
 	private static $WHERE_OPS = [
 		'='  => true,
 		'!=' => true,
@@ -81,14 +83,17 @@ class Bucket {
 		$relevantBuckets = array_merge( array_keys( $puts ), array_keys( $bucket_hash ) );
 		$res = $dbw->newSelectQueryBuilder()
 				->from( 'bucket_schemas' )
-				->select( [ 'table_name', 'schema_json' ] )
+				->select( [ 'table_name', 'table_version', 'schema_json' ] )
 				->lockInShareMode()
 				->where( [ 'table_name' => $relevantBuckets ] )
+				->orderBy( 'table_version', SelectQueryBuilder::SORT_ASC ) // We want $versions to end up having the highest version in it
 				->caller( __METHOD__ )
 				->fetchResultSet();
 		$schemas = [];
+		$versions = [];
 		foreach ( $res as $row ) {
 			$schemas[$row->table_name] = json_decode( $row->schema_json, true );
+			$versions[$row->table_name] = $row->table_version;
 		}
 
 		foreach ( $puts as $tableName => $tableData ) {
@@ -113,7 +118,7 @@ class Bucket {
 			}
 
 			$tablePuts = [];
-			$dbTableName = 'bucket__' . $tableName;
+			$dbTableName = 'bucket__' . $tableName . '__' . $versions[$tableName];
 			$res = $dbw->newSelectQueryBuilder()
 				->from( $dbw->addIdentifierQuotes( $dbTableName ) )
 				->select( '*' )
@@ -159,7 +164,7 @@ class Bucket {
 			# Check these puts against the hash of the last time we did puts.
 			sort( $tablePuts );
 			sort( $schemas[$tableName] );
-			$newHash = hash( 'sha256', json_encode( $tablePuts ) . json_encode( $schemas[$tableName] ) );
+			$newHash = hash( 'sha256', json_encode( $tablePuts ) . json_encode( $schemas[$tableName] ) . $versions[$tableName] );
 			if ( isset( $bucket_hash[ $tableName ] ) && $bucket_hash[ $tableName ] == $newHash ) {
 				unset( $bucket_hash[ $tableName ] );
 				continue;
@@ -181,12 +186,12 @@ class Bucket {
 				->execute();
 			$dbw->newDeleteQueryBuilder()
 				->deleteFrom( 'bucket_pages' )
-				->where( [ '_page_id' => $pageId, 'table_name' => $tableName ] )
+				->where( [ '_page_id' => $pageId, 'table_name' => $tableName ] ) // Purposefully delete all table_versions
 				->caller( __METHOD__ )
 				->execute();
 			$dbw->newInsertQueryBuilder()
 				->insert( 'bucket_pages' )
-				->rows( [ '_page_id' => $pageId, 'table_name' => $tableName, 'put_hash' => $newHash ] )
+				->rows( [ '_page_id' => $pageId, 'table_name' => $tableName, 'table_version' => $versions[$tableName], 'put_hash' => $newHash ] )
 				->caller( __METHOD__ )
 				->execute();
 		}
@@ -208,7 +213,7 @@ class Bucket {
 					->execute();
 				foreach ( $tablesToDelete as $name ) {
 					$dbw->newDeleteQueryBuilder()
-						->deleteFrom( $dbw->addIdentifierQuotes( 'bucket__' . $name ) )
+						->deleteFrom( $dbw->addIdentifierQuotes( 'bucket__' . $name . '__' . $versions[$name] ) )
 						->where( [ '_page_id' => $pageId ] )
 						->caller( __METHOD__ )
 						->execute();
@@ -245,14 +250,16 @@ class Bucket {
 				->caller( __METHOD__ )
 				->execute();
 			$table = [];
+			$versions = [];
 			foreach ( $res as $row ) {
 				$table[] = $row->table_name;
+				$versions[$row->table_name] = $row->table_version;
 			}
 
 			foreach ( $table as $name ) {
 				// Clear this pages data from the bucket
 				$dbw->newDeleteQueryBuilder()
-					->deleteFrom( $dbw->addIdentifierQuotes( 'bucket__' . $name ) )
+					->deleteFrom( $dbw->addIdentifierQuotes( 'bucket__' . $name . '__' . $versions[$name] ) )
 					->where( [ '_page_id' => $pageId ] )
 					->caller( __METHOD__ )
 					->execute();
@@ -336,45 +343,60 @@ class Bucket {
 
 			$newSchema[$lcFieldName] = [ 'type' => $fieldData->type, 'index' => $index, 'repeated' => $repeated ];
 		}
-		$dbTableName = 'bucket__' . $bucketName;
 		$dbw = MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnectionRef( DB_PRIMARY );
 
-		$dbw->onTransactionCommitOrIdle( function () use ( $dbw, $dbTableName, $newSchema, $parentId, $bucketName ) {
-			file_put_contents( MW_INSTALL_PATH . '/cook.txt', "POST TRANSACTION COMMIT\n", FILE_APPEND );
-			if ( !$dbw->tableExists( $dbTableName, __METHOD__ ) ) {
-				// We are a new bucket json
-				$statement = self::getCreateTableStatement( $dbTableName, $newSchema );
-				file_put_contents( MW_INSTALL_PATH . '/cook.txt', "CREATE TABLE STATEMENT $statement \n", FILE_APPEND );
-				$dbw->query( $statement );
+		$dbw->onTransactionCommitOrIdle( function () use ( $dbw, $newSchema, $bucketName, $parentId ) {
+			$row = $dbw->newSelectQueryBuilder()
+				->table( 'bucket_schemas' )
+				->select( [ 'table_version', 'schema_json' ] )
+				->where( [ 'table_name' => $bucketName ] )
+				->orderBy( 'table_version', SelectQueryBuilder::SORT_DESC )
+				->limit( 1 )
+				->caller( __METHOD__ )
+				->fetchResultSet()
+				->fetchObject();
+			$tableVersion = $row->table_version;
+			$oldSchema = $row->schema_json;
+			if ( $tableVersion == null ) {
+				$tableVersion = 0;
 			} else {
-				// We are an existing bucket json
-				$oldSchema = $dbw->query( "SHOW TABLE STATUS LIKE '$dbTableName';", __METHOD__ )->fetchObject()->Comment;
-				$oldSchema = json_decode( $oldSchema, true );
-				$statement = self::getAlterTableStatement( $dbTableName, $newSchema, $oldSchema, $dbw );
-				file_put_contents( MW_INSTALL_PATH . '/cook.txt', "ALTER TABLE STATEMENT $statement \n", FILE_APPEND );
-				$dbw->query( $statement );
+				$tableVersion += 1;
 			}
 
-			// At this point is is possible that another transaction has changed the table
-			//So we start a transaction, read the table comment (which is the schema), and write that to bucket_schemas
-			$dbw->begin( __METHOD__ );
-			$schemaJson = $dbw->query( "SHOW TABLE STATUS LIKE '$dbTableName';", __METHOD__ )->fetchObject()->Comment;
-			file_put_contents( MW_INSTALL_PATH . '/cook.txt', "================Schema in table comment $currentSchema\n", FILE_APPEND );
-			// $currentSchema['_parent_rev_id'] = $parentId; //TODO with the new DDL approach this doesn't work anymore, we could just use a timestamp or something
-			$dbw->upsert(
-				'bucket_schemas',
-				[ 'table_name' => $bucketName, 'schema_json' => $schemaJson ],
-				'table_name',
-				[ 'schema_json' => $schemaJson ]
-			);
-			$dbw->commit( __METHOD__ );
+			if ( $oldSchema != null ) {
+				$newSchemaString = json_encode( $newSchema );
+				if ( $oldSchema == $newSchemaString ) {
+					return; // If the schema didn't change we don't need a new table.
+				}
+			}
+
+			$dbTableName = 'bucket__' . $bucketName . '__' . $tableVersion;
+			$statement = self::getCreateTableStatement( $dbTableName, $newSchema );
+			file_put_contents( MW_INSTALL_PATH . '/cook.txt', "CREATE TABLE STATEMENT $statement \n", FILE_APPEND );
+			$dbw->query( $statement );
+
+			$dbw->newInsertQueryBuilder()
+				->table( 'bucket_schemas' )
+				->rows( [
+					'table_name' => $bucketName,
+					'table_version' => $tableVersion,
+					'schema_json' => json_encode( $newSchema )
+				] )
+				->caller( __METHOD__ )
+				->execute();
 		}, __METHOD__ );
 	}
 
 	public static function deleteTable( $bucketName ) {
 		$dbw = MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnectionRef( DB_PRIMARY );
 		$bucketName = self::getValidBucketName( $bucketName );
-		$tableName = 'bucket__' . $bucketName;
+		$tableVersion = $dbw->newSelectQueryBuilder()
+			->table( 'bucket_schemas' )
+			->select( 'table_version' )
+			->where( [ 'table_name' => $bucketName ] )
+			->caller( __METHOD__ )
+			->fetchField();
+		$tableName = 'bucket__' . $bucketName . '__' . $tableVersion;
 
 		if ( self::canDeleteBucketPage( $bucketName ) ) {
 			$dbw->newDeleteQueryBuilder()
@@ -461,61 +483,6 @@ class Bucket {
 		}
 	}
 
-	private static function getAlterTableStatement( $dbTableName, $newSchema, $oldSchema, IDatabase $dbw ) {
-		$alterTableFragments = [];
-
-		unset( $oldSchema['_parent_rev_id'] ); // _parent_rev_id is not a column, its just metadata
-		foreach ( $newSchema as $fieldName => $fieldData ) {
-			# Handle new columns
-			if ( !isset( $oldSchema[$fieldName] ) ) {
-				$alterTableFragments[] = "ADD `$fieldName` " . self::getDbType( $fieldName, $fieldData );
-				if ( $fieldData['index'] ) {
-					$alterTableFragments[] = 'ADD ' . self::getIndexStatement( $fieldName, $fieldData );
-				}
-			# Handle deleted columns
-			} elseif ( $oldSchema[$fieldName]['index'] === true && $fieldData['index'] === false ) {
-				$alterTableFragments[] = "DROP INDEX `$fieldName`";
-			} else {
-				# Handle type changes
-				$oldDbType = self::getDbType( $fieldName, $oldSchema[$fieldName] );
-				$newDbType = self::getDbType( $fieldName, $fieldData );
-				if ( $oldDbType !== $newDbType ) {
-					$needNewIndex = false;
-					if ( $oldSchema[$fieldName]['repeated'] || $fieldData['repeated']
-						|| strpos( self::getIndexStatement( $fieldName, $oldSchema[$fieldName] ), '(' ) != strpos( self::getIndexStatement( $fieldName, $fieldData ), '(' ) ) {
-						# We cannot MODIFY from a column that doesn't need key length to a column that does need key length
-						$alterTableFragments[] = "DROP INDEX `$fieldName`"; # Repeated types cannot reuse the existing index
-						$needNewIndex = true;
-					}
-					if ( $oldDbType == 'TEXT' && $newDbType == 'JSON' ) { # Update string types to be valid JSON
-						$dbw->onTransactionCommitOrIdle( static function () use ( $dbw, $dbTableName, $fieldName ) {
-							$dbw->query( "UPDATE $dbTableName SET `$fieldName` = JSON_ARRAY(`$fieldName`) WHERE NOT JSON_VALID(`$fieldName`) AND _page_id >= 0;" );
-						}, __METHOD__ );
-					}
-					$alterTableFragments[] = "MODIFY `$fieldName` " . self::getDbType( $fieldName, $fieldData );
-					if ( $fieldData['index'] && $needNewIndex ) {
-						$alterTableFragments[] = 'ADD ' . self::getIndexStatement( $fieldName, $fieldData );
-					}
-				}
-				# Handle index changes
-				if ( ( $oldSchema[$fieldName]['index'] === false && $fieldData['index'] === true ) ) {
-					$alterTableFragments[] = 'ADD ' . self::getIndexStatement( $fieldName, $fieldData );
-				}
-			}
-			unset( $oldSchema[$fieldName] );
-		}
-		// Drop unused columns
-		foreach ( $oldSchema as $deletedColumn => $val ) {
-			# TODO performance test this
-			$alterTableFragments[] = "DROP `$deletedColumn`";
-		}
-
-		$schemaString = json_encode( $newSchema );
-		$alterTableFragments[] = "COMMENT='$schemaString'";
-
-		return "ALTER TABLE $dbTableName " . implode( ', ', $alterTableFragments ) . ';';
-	}
-
 	private static function getCreateTableStatement( $dbTableName, $newSchema ) {
 		$createTableFragments = [];
 
@@ -528,9 +495,7 @@ class Bucket {
 		}
 		$createTableFragments[] = 'PRIMARY KEY (`_page_id`, `_index`)';
 
-		$schemaString = json_encode( $newSchema );
-
-		return "CREATE TABLE $dbTableName (" . implode( ', ', $createTableFragments ) . ') COMMENT=\'' . $schemaString . '\';';
+		return "CREATE TABLE $dbTableName (" . implode( ', ', $createTableFragments ) . ');';
 	}
 
 	public static function castToDbType( $value, $type ) {
@@ -602,8 +567,9 @@ class Bucket {
 		if ( self::isCategory( $column ) ) {
 			$tableName = 'category';
 			$columnName = explode( ':', $column )[1];
+			$tmp = self::getSelectDbName( $tableName );
 			return [
-				'fullName' => "`bucket__$tableName`.`$columnName`",
+				'fullName' => "`$tmp`.`$columnName`",
 				'tableName' => $tableName,
 				'columnName' => $columnName,
 				'schema' => [
@@ -649,8 +615,9 @@ class Bucket {
 		if ( !isset( $schemas[$tableName][$columnName] ) ) {
 			throw new QueryException( wfMessage( 'bucket-query-column-not-found-in-bucket', $columnName, $tableName ) );
 		}
+		$tmp = self::getSelectDbName( $tableName );
 		return [
-			'fullName' => "`bucket__$tableName`.`$columnName`",
+			'fullName' => "`$tmp`.`$columnName`",
 			'tableName' => $tableName,
 			'columnName' => $columnName,
 			'schema' => $schemas[$tableName][$columnName]
@@ -768,6 +735,10 @@ class Bucket {
 		throw new QueryException( wfMessage( 'bucket-query-where-confused', json_encode( $condition ) ) );
 	}
 
+	public static function getSelectDbName( $bucketName ): string {
+		return 'bucket__' . $bucketName . '__' . self::$allVersions[$bucketName];
+	}
+
 	public static function runSelect( $data ) {
 		$SELECTS = [];
 		$LEFT_JOINS = [];
@@ -777,13 +748,13 @@ class Bucket {
 		// check to see if any duplicates
 		$tableNames = [];
 		$categoryJoins = [];
+		$bucketBacklinks = [];
 
 		$primaryTableName = self::getValidFieldName( $data['tableName'] );
 		if ( !$primaryTableName ) {
 			throw new QueryException( wfMessage( 'bucket-invalid-name-warning', $data['tableName'] ) );
 		}
 		$tableNames[ $primaryTableName ] = true;
-		$TABLES['bucket__' . $primaryTableName] = 'bucket__' . $primaryTableName;
 
 		foreach ( $data['joins'] as $join ) {
 			$tableName = self::getValidFieldName( $join['tableName'] );
@@ -794,13 +765,13 @@ class Bucket {
 				throw new QueryException( wfMessage( 'bucket-select-duplicate-join', $tableName ) );
 			}
 			$tableNames[$tableName] = true;
-			$TABLES['bucket__' . $tableName] = 'bucket__' . $tableName;
 			$join['tableName'] = $tableName;
 		}
 
 		$tableNamesList = array_keys( $tableNames );
 		foreach ( $tableNames as $tableName => $val ) {
-			if ( isset( self::$allSchemas[$tableName] ) && self::$allSchemas[$tableName] ) {
+			if ( isset( self::$allSchemas[$tableName] ) && self::$allSchemas[$tableName]
+			  && isset( self::$allVersions[$tableName] ) && self::$allVersions[$tableName] ) {
 				unset( $tableNames[$tableName] );
 			}
 		}
@@ -810,22 +781,27 @@ class Bucket {
 		if ( !empty( $missingTableNames ) ) {
 			$res = $dbw->newSelectQueryBuilder()
 				->from( 'bucket_schemas' )
-				->select( [ 'table_name', 'schema_json' ] )
+				->select( [ 'table_name', 'table_version', 'schema_json' ] )
 				->lockInShareMode()
 				->where( [ 'table_name' => $missingTableNames ] )
+				->orderBy( 'table_version', SelectQueryBuilder::SORT_DESC ) // Order so that we end up with the lowest number being saved as our version, since we are reading
 				->caller( __METHOD__ )
 				->fetchResultSet();
 
-			$schemas = [];
 			foreach ( $res as $row ) {
 				self::$allSchemas[$row->table_name] = json_decode( $row->schema_json, true );
+				self::$allVersions[$row->table_name] = $row->table_version;
 			}
 		}
 		foreach ( $tableNamesList as $tableName ) {
 			if ( !array_key_exists( $tableName, self::$allSchemas ) || !self::$allSchemas[$tableName] ) {
 				throw new QueryException( wfMessage( 'bucket-no-exist', $tableName ) );
+			} else {
+				$bucketBacklinks[] = $tableName;
 			}
 		}
+
+		$TABLES[self::getSelectDbName( $primaryTableName )] = self::getSelectDbName( $primaryTableName );
 
 		$schemas = [];
 		foreach ( $tableNamesList as $tableName ) {
@@ -879,8 +855,9 @@ class Bucket {
 
 			foreach ( $categoryJoins as $categoryName => $alias ) {
 				$TABLES[$alias] = 'categorylinks';
+				$tmp = self::getSelectDbName( $primaryTableName );
 				$LEFT_JOINS[$alias] = [
-					"`$alias`.cl_from = `bucket__$primaryTableName`.`_page_id`", // Must be all in one string to avoid the table name being treated as a string value.
+					"`$alias`.cl_from = `$tmp`.`_page_id`", // Must be all in one string to avoid the table name being treated as a string value.
 					"`$alias`.cl_to" => str_replace( ' ', '_', $categoryName )
 				];
 			}
@@ -910,14 +887,15 @@ class Bucket {
 					$isRightRepeated = $isTmp;
 				}
 
-				$LEFT_JOINS['bucket__' . $join['tableName']] = [
+				$LEFT_JOINS[self::getSelectDbName( $join['tableName'] )] = [
 					"{$rightField['fullName']} MEMBER OF({$leftField['fullName']})"
 				];
 			} else {
-				$LEFT_JOINS['bucket__' . $join['tableName']] = [
+				$LEFT_JOINS[self::getSelectDbName( $join['tableName'] )] = [
 					"{$leftField['fullName']} = {$rightField['fullName']}"
 				];
 			}
+			$TABLES[self::getSelectDbName( $join['tableName'] )] = self::getSelectDbName( $join['tableName'] );
 		}
 
 		$OPTIONS['GROUP BY'] = array_keys( $ungroupedColumns );
@@ -934,7 +912,7 @@ class Bucket {
 
 		$rows = [];
 		$tmp = $dbw->newSelectQueryBuilder()
-			->from( 'bucket__' . $primaryTableName )
+			->from( self::getSelectDbName( $primaryTableName ) )
 			->select( $SELECTS )
 			->where( $WHERES )
 			->options( $OPTIONS )
@@ -967,7 +945,7 @@ class Bucket {
 			}
 			$rows[] = $row;
 		}
-		return $rows;
+		return [ $bucketBacklinks, $rows ];
 	}
 }
 

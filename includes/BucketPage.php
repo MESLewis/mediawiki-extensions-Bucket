@@ -5,9 +5,11 @@ namespace Mediawiki\Extension\Bucket;
 use Article;
 use MediaWiki\Extension\Bucket\Bucket;
 use MediaWiki\Extension\Bucket\BucketPageHelper;
+use MediaWiki\Html\Html;
 use MediaWiki\MediaWikiServices;
 use Mediawiki\Title\Title;
 use MediaWiki\Title\TitleValue;
+use Wikimedia\Rdbms\SelectQueryBuilder;
 
 class BucketPage extends Article {
 
@@ -30,14 +32,20 @@ class BucketPage extends Article {
 
 		$table_name = Bucket::getValidFieldName( $title->getRootText() );
 
+		$duringMigration = false;
+
 		$res = $dbw->newSelectQueryBuilder()
 					->from( 'bucket_schemas' )
-					->select( [ 'table_name', 'schema_json' ] )
+					->select( [ 'table_name', 'table_version', 'schema_json' ] )
 					->where( [ 'table_name' => $table_name ] )
+					->orderBy( 'table_version', SelectQueryBuilder::SORT_DESC )
 					->caller( __METHOD__ )
 					->fetchResultSet();
 		$schemas = [];
 		foreach ( $res as $row ) {
+			if ( array_key_exists( $row->table_name, $schemas ) ) {
+				$duringMigration = true;
+			}
 			$schemas[$row->table_name] = json_decode( $row->schema_json, true );
 		}
 
@@ -56,6 +64,10 @@ class BucketPage extends Article {
 		$queryResult = [];
 		if ( isset( $fullResult['bucket'] ) ) {
 			$queryResult = $fullResult['bucket'];
+		}
+
+		if ( $duringMigration ) {
+			$out->addHTML( HTML::warningBox( 'Bucket change in progress. Data below will not be updated until the change is complete.' ) );
 		}
 
 		$resultCount = count( $queryResult );
