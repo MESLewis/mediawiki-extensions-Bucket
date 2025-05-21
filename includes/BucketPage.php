@@ -42,11 +42,13 @@ class BucketPage extends Article {
 					->caller( __METHOD__ )
 					->fetchResultSet();
 		$schemas = [];
+		$versions = [];
 		foreach ( $res as $row ) {
 			if ( array_key_exists( $row->table_name, $schemas ) ) {
 				$duringMigration = true;
 			}
 			$schemas[$row->table_name] = json_decode( $row->schema_json, true );
+			$versions[$row->table_name] = $row->table_version;
 		}
 
 		$select = $context->getRequest()->getText( 'select', '*' );
@@ -72,7 +74,12 @@ class BucketPage extends Article {
 
 		$resultCount = count( $queryResult );
 		$endResult = $offset + $resultCount;
-		// TODO: I really want to show the total row count for the table
+
+		$maxCount = $dbw->newSelectQueryBuilder()
+			->from( Bucket::getBucketTableName( $table_name, $versions[$table_name] ) )
+			->fetchRowCount();
+		$out->addWikiTextAsContent( 'Bucket entries: ' . $maxCount );
+
 		$out->addHTML( wfMessage( 'bucket-page-result-counter', $resultCount, $offset, $endResult ) );
 
 		$specialQueryValues = $context->getRequest()->getQueryValues();

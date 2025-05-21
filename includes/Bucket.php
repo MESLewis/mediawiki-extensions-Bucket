@@ -117,7 +117,7 @@ class Bucket {
 			}
 
 			$tablePuts = [];
-			$dbTableName = 'bucket__' . $tableName . '__' . $versions[$tableName];
+			$dbTableName = self::getBucketTableName( $tableName, $versions[$tableName] );
 			$res = $dbw->newSelectQueryBuilder()
 				->from( $dbw->addIdentifierQuotes( $dbTableName ) )
 				->select( '*' )
@@ -212,7 +212,7 @@ class Bucket {
 					->execute();
 				foreach ( $tablesToDelete as $name ) {
 					$dbw->newDeleteQueryBuilder()
-						->deleteFrom( $dbw->addIdentifierQuotes( 'bucket__' . $name . '__' . $versions[$name] ) )
+						->deleteFrom( self::getBucketTableName( $name, $versions[$name] ) )
 						->where( [ '_page_id' => $pageId ] )
 						->caller( __METHOD__ )
 						->execute();
@@ -258,7 +258,7 @@ class Bucket {
 			foreach ( $table as $name ) {
 				// Clear this pages data from the bucket
 				$dbw->newDeleteQueryBuilder()
-					->deleteFrom( $dbw->addIdentifierQuotes( 'bucket__' . $name . '__' . $versions[$name] ) )
+					->deleteFrom( self::getBucketTableName( $name, $versions[$name] ) )
 					->where( [ '_page_id' => $pageId ] )
 					->caller( __METHOD__ )
 					->execute();
@@ -368,7 +368,7 @@ class Bucket {
 				}
 			}
 
-			$dbTableName = 'bucket__' . $bucketName . '__' . $tableVersion;
+			$dbTableName = self::getBucketTableName( $bucketName, $tableVersion );
 			$statement = self::getCreateTableStatement( $dbTableName, $newSchema );
 			file_put_contents( MW_INSTALL_PATH . '/cook.txt', "CREATE TABLE STATEMENT $statement \n", FILE_APPEND );
 			$dbw->query( $statement );
@@ -394,7 +394,7 @@ class Bucket {
 			->where( [ 'table_name' => $bucketName ] )
 			->caller( __METHOD__ )
 			->fetchField();
-		$tableName = 'bucket__' . $bucketName . '__' . $tableVersion;
+		$tableName = self::getBucketTableName( $bucketName, $tableVersion );
 
 		if ( self::canDeleteBucketPage( $bucketName ) ) {
 			$dbw->newDeleteQueryBuilder()
@@ -730,8 +730,12 @@ class Bucket {
 		throw new QueryException( wfMessage( 'bucket-query-where-confused', json_encode( $condition ) ) );
 	}
 
-	public static function getSelectDbName( $bucketName ): string {
-		return 'bucket__' . $bucketName . '__' . self::$allVersions[$bucketName];
+	private static function getSelectDbName( $bucketName ): string {
+		return self::getBucketTableName( $bucketName, self::$allVersions[$bucketName] );
+	}
+
+	public static function getBucketTableName( $bucketName, $version ): string {
+		return 'bucket__' . $bucketName . '__' . $version;
 	}
 
 	public static function runSelect( $data ) {
