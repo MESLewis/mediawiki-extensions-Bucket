@@ -23,7 +23,7 @@ class BucketPageHelper {
 	 * @return array
 	 */
 	public static function runQuery(
-		WebRequest $existing_request, string $bucket, string $select, string $where, int $limit, int $offset
+		WebRequest $existing_request, string $bucket, string $select, string $where, int $limit, int $offset, string $orderBy, string $orderByDir
 	): array {
 		if ( $bucket === null ) {
 			return [ 'error' => wfMessage( 'bucket-empty-bucket-name' ) ];
@@ -69,6 +69,9 @@ class BucketPageHelper {
 		$questionString[] = ".select($select)";
 		if ( strlen( $where ) > 0 ) {
 			$questionString[] = ".where($where)";
+		}
+		if ( strlen( $orderBy ) > 0 ) {
+			$questionString[] = ".orderBy('$orderBy', '$orderByDir')";
 		}
 		$questionString[] = ".limit($limit).offset($offset).run()";
 		$questionString = implode( '', $questionString );

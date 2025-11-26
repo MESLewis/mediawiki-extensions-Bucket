@@ -85,6 +85,9 @@
 		"ext.bucket.bucketpage.styles": {
 			"styles": "resources/ext.bucket.bucketpage.styles.less"
 		},
+		"ext.bucket.specialbucket.styles": {
+			"styles": "resources/ext.bucket.specialbucket.styles.less"
+		},
 		"mw.widgets.BucketInputWidget": {
 			"scripts": "resources/mw.widgets.BucketInputWidget.js",
 			"dependencies" : [

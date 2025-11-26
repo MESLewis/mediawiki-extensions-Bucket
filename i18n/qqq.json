@@ -18,6 +18,8 @@
 	"bucket-view-help-limit": "The detailed description for the textbox that specifies a SQL LIMIT statement in [[Special:Bucket]]",
 	"bucket-view-offset": "{{Optional|The prompt for the textbox that specifies a SQL OFFSET statement in [[Special:Bucket]]}}",
 	"bucket-view-help-offset": "The detailed description for the textbox that specifies a SQL OFFSET statement in [[Special:Bucket]]",
+	"bucket-view-orderby": "Field name to order results by. Must be present in Select",
+	"bucket-view-help-orderby": "Help for orderby field",
 	"bucket-view-submit": "The text for the submit button in [[Special:Bucket]]",
 	"bucket-previous": "Text for button to switch to the previous page. $1 for current page size",
 	"bucket-previous-results": "The title of the previous page button. $1 for current page size",

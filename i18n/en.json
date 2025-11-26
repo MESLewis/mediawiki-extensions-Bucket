@@ -21,6 +21,8 @@
 	"bucket-view-help-limit": "The number of results to return per page. Maximum 500",
 	"bucket-view-offset": "Offset",
 	"bucket-view-help-offset": "How far to offset the returned values",
+	"bucket-view-orderby": "OrderBy",
+	"bucket-view-help-orderby": "One field name. Must be present in Select",
 	"bucket-view-submit": "Submit",
 	"bucket-previous": "Previous $1",
 	"bucket-previous-results": "Previous $1 results",

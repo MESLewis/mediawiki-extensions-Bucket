@@ -16,16 +16,12 @@ class SpecialBucket extends SpecialPage {
 	}
 
 	/**
-	 * @param string $bucket
-	 * @param string $select
-	 * @param string $where
-	 * @param int $limit
-	 * @param int $offset
 	 * @return string
 	 * @throws OOUI\Exception
 	 */
-	private function getQueryBuilder( $bucket, $select, $where, $limit, $offset ) {
+	private function getQueryBuilder( string $bucket, string $select, string $where, int $limit, int $offset, string $orderBy, string $orderByDirection ): string {
 		$inputs = [];
+		// Bucket
 		$inputs[] = new OOUI\FieldLayout(
 			new BucketTextInputWidget(
 				[
@@ -41,6 +37,7 @@ class SpecialBucket extends SpecialPage {
 				'help' => $this->msg( 'bucket-view-help-bucket-name' )
 			]
 		);
+		// Select
 		$inputs[] = new OOUI\FieldLayout(
 			new OOUI\TextInputWidget(
 				[
@@ -55,6 +52,7 @@ class SpecialBucket extends SpecialPage {
 				'help' => $this->msg( 'bucket-view-help-select' )
 			]
 		);
+		// Where
 		$inputs[] = new OOUI\FieldLayout(
 			new OOUI\MultilineTextInputWidget(
 				[
@@ -69,6 +67,7 @@ class SpecialBucket extends SpecialPage {
 				'help' => $this->msg( 'bucket-view-help-where' )
 			]
 		);
+		// Limit
 		$inputs[] = new OOUI\FieldLayout(
 			new OOUI\NumberInputWidget(
 				[
@@ -85,6 +84,7 @@ class SpecialBucket extends SpecialPage {
 				'help' => $this->msg( 'bucket-view-help-limit' )
 			]
 		);
+		// Offset
 		$inputs[] = new OOUI\FieldLayout(
 			new OOUI\NumberInputWidget(
 				[
@@ -101,31 +101,35 @@ class SpecialBucket extends SpecialPage {
 			]
 		);
 		// Order by
-		$orderByDirection = new OOUI\FieldLayout(
-			// TODO read value from url
-			new OOUI\DropdownInputWidget( [
+		$dropdownWidget = new OOUI\DropdownInputWidget( [
+				'name' => 'orderbydir',
 				'options' => [
 					[ 'data' => 'asc', 'label' => 'Ascending' ],
 					[ 'data' => 'desc', 'label' => 'Descending' ]
 				],
 				'id' => 'bucket-orderby-direction',
-			] ),
+			] );
+		if ( $orderByDirection == 'desc' ) {
+			$dropdownWidget->setValue( 'desc' );
+		}
+		$orderByDirectionWidget = new OOUI\FieldLayout(
+			$dropdownWidget,
 			[
 				'classes' => [ 'bucket-orderby-direction' ]
 			]
 		);
-		$orderBy = new OOUI\FieldLayout(
+		$orderByWidget = new OOUI\FieldLayout(
 			new OOUI\TextInputWidget(
 				[
 					'name' => 'orderby',
-					'value' => '', // TODO
+					'value' => $orderBy,
 					'id' => 'bucket-orderby',
 				]
 			)
 		);
 		$inputs[] = new OOUI\FieldLayout(
 			new OOUI\ButtonGroupWidget( [
-			'items' => [ $orderBy, $orderByDirection ],
+			'items' => [ $orderByWidget, $orderByDirectionWidget ],
 			'classes' => [ 'bucket-orderby-group' ]
 			] ),
 			[
@@ -134,6 +138,7 @@ class SpecialBucket extends SpecialPage {
 				'help' => $this->msg( 'bucket-view-help-orderby' ),
 				'classes' => [ 'bucket-orderby' ]
 			] );
+		// Submit
 		$inputs[] = new OOUI\FieldLayout(
 			new OOUI\ButtonInputWidget(
 				[
@@ -167,6 +172,7 @@ class SpecialBucket extends SpecialPage {
 		$this->setHeaders();
 		$out->enableOOUI();
 		$out->addModuleStyles( 'ext.bucket.bucketpage.styles' );
+		$out->addModuleStyles( 'ext.bucket.specialbucket.styles' );
 		$out->addModules( 'mw.widgets.BucketInputWidget' );
 		$out->setPageTitle( $out->msg( 'bucket' )->text() );
 		$out->addHelpLink( 'https://meta.weirdgloop.org/Extension:Bucket/Bucket browse', true );
@@ -176,8 +182,10 @@ class SpecialBucket extends SpecialPage {
 		$where = $request->getText( 'where', '' );
 		$limit = $request->getInt( 'limit', 20 );
 		$offset = $request->getInt( 'offset', 0 );
+		$orderBy = $request->getText( 'orderby', '' );
+		$orderByDir = $request->getText( 'orderbydir', 'asc' );
 
-		$out->addHTML( $this->getQueryBuilder( $bucket, $select, $where, $limit, $offset ) );
+		$out->addHTML( $this->getQueryBuilder( $bucket, $select, $where, $limit, $offset, $orderBy, $orderByDir ) );
 
 		if ( $bucket === '' ) {
 			return;
@@ -203,7 +211,7 @@ class SpecialBucket extends SpecialPage {
 			$schemas[$row->bucket_name] = json_decode( $row->schema_json, true );
 		}
 
-		$fullResult = BucketPageHelper::runQuery( $request, $bucket, $select, $where, $limit, $offset );
+		$fullResult = BucketPageHelper::runQuery( $request, $bucket, $select, $where, $limit, $offset, $orderBy, $orderByDir );
 		$queryResult = [];
 
 		if ( isset( $fullResult['error'] ) ) {
