@@ -3,42 +3,46 @@
  */
 ( function () {
     /**
-	 * @classdesc Bucket name input widget
+	 * @classdesc Bucket orderBy input widget
 	 *
 	 * @class
 	 * @extends OO.ui.TextInputWidget
 	 * @mixes OO.ui.mixin.LookupElement
 	 *
 	 * @constructor
-	 * @description Create a mw.widgets.BucketInputWidget object.
+	 * @description Create a mw.widgets.BucketOrderByInputWidget object.
 	 * @param {Object} [config] Configuration options
 	 * @param {mw.Api} [config.api] API object to use, creates a default mw.Api instance if not specified
 	 */
-    mw.widgets.BucketInputWidget = function ( config ) {
+    mw.widgets.BucketOrderByInputWidget = function ( config ) {
         // Config initialization
         config = config || {};
         config.allowSuggestionsWhenEmpty = true;
 
         // Parent constructor
-        mw.widgets.BucketInputWidget.super.call( this, Object.assign( {}, config, { autocomplete: false }));
+        mw.widgets.BucketOrderByInputWidget.super.call( this, Object.assign( {}, config, { 
+            autocomplete: false
+        }));
 
         // Mixin constructor
         OO.ui.mixin.LookupElement.call( this, config);
 
         // Properties
         this.api = config.api || new mw.Api();
+        
+		this.lookupMenu.$element.addClass( 'bucket-widget-menu' );
     }
 
     // Activate mixins
-    OO.inheritClass( mw.widgets.BucketInputWidget, OO.ui.TextInputWidget );
-    OO.mixinClass( mw.widgets.BucketInputWidget, OO.ui.mixin.LookupElement);
+    OO.inheritClass( mw.widgets.BucketOrderByInputWidget, OO.ui.TextInputWidget );
+    OO.mixinClass( mw.widgets.BucketOrderByInputWidget, OO.ui.mixin.LookupElement);
 
 	/**
 	 * Handle menu item 'choose' event, updating the text input value to the value of the clicked item.
 	 *
 	 * @param {OO.ui.MenuOptionWidget} item Selected item
 	 */
-    mw.widgets.BucketInputWidget.prototype.onLookupMenuChoose = function (item) {
+    mw.widgets.BucketOrderByInputWidget.prototype.onLookupMenuChoose = function (item) {
         this.closeLookupMenu();
         this.setLookupsDisabled( true);
         this.setValue(item.getData());
@@ -48,10 +52,10 @@
 	/**
 	 * @inheritdoc
 	 */
-    mw.widgets.BucketInputWidget.prototype.focus = function() {
+    mw.widgets.BucketOrderByInputWidget.prototype.focus = function() {
         this.setLookupsDisabled(true);
 
-        const retval = mw.widgets.BucketInputWidget.super.prototype.focus.apply(this, arguments);
+        const retval = mw.widgets.BucketOrderByInputWidget.super.prototype.focus.apply(this, arguments);
 
         this.setLookupsDisabled(false);
         return retval;
@@ -60,14 +64,8 @@
     /**
 	 * @inheritdoc
 	 */
-    mw.widgets.BucketInputWidget.prototype.getLookupRequest = function () {
-        return this.api.get( {
-            action: 'query',
-            list: 'allpages',
-            apnamespace: 9592,
-            apprefix: this.value,
-            aplimit: 500
-        });
+    mw.widgets.BucketOrderByInputWidget.prototype.getLookupRequest = function () {
+        return $.Deferred().resolve().promise();
     }
 
 	/**
@@ -77,8 +75,8 @@
 	 * @param {any} response Response from server
 	 * @return {Object}
 	 */
-    mw.widgets.BucketInputWidget.prototype.getLookupCacheDataFromResponse = function (response) {
-        return response.query.allpages || {};
+    mw.widgets.BucketOrderByInputWidget.prototype.getLookupCacheDataFromResponse = function (response) {
+        return {};
     }
 
 	/**
@@ -87,23 +85,23 @@
 	 * @param {Object} data Query result
 	 * @return {OO.ui.MenuOptionWidget[]} Menu items
 	 */
-    mw.widgets.BucketInputWidget.prototype.getLookupMenuOptionsFromData = function ( data) {
+    mw.widgets.BucketOrderByInputWidget.prototype.getLookupMenuOptionsFromData = function ( data) {
         const items = [];
 
-        for ( let i = 0, len = data.length; i < len; i++) {
-            title = data[i].title;
-            //Format page title into bucket name
-            cleanTitle = title.split(':')[1].toLowerCase().replace(/ /g,"_");
-            items.push(new OO.ui.MenuOptionWidget( {
-                label: title,
-                data: cleanTitle
-            }));
+        var values = $("#bucket-select > input")[0].value.split(", ");
+        for ( var key in values) {
+            if ( values[key].indexOf(this.value) !== -1 && values[key].length > 0) {
+                items.push(new OO.ui.MenuOptionWidget({
+                    label: values[key],
+                    data: values[key]
+                }));
+            }
         }
         return items;
     }
 
     //Attach JS to input form
-    const $bucketInputSelector = $('#bucket-input');
+    const $bucketInputSelector = $('#bucket-orderby');
     if ($bucketInputSelector.length) {
         OO.ui.infuse($bucketInputSelector);
     }

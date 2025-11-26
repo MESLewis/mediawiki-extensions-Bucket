@@ -56,11 +56,15 @@ class BucketPageHelper {
 				}
 			}
 		} else {
-			$selectNames = explode( ' ', $select );
+			$selectNames = explode( ', ', $select );
 		}
 		$returnSelectNames = $selectNames;
 		foreach ( $selectNames as $idx => $name ) {
-			$selectNames[$idx] = "'" . $name . "'";
+			if ( strlen( $name ) > 0 ) {
+				$selectNames[$idx] = "'" . $name . "'";
+			} else {
+				unset( $selectNames[$idx] );
+			}
 		}
 		$select = implode( ',', $selectNames );
 

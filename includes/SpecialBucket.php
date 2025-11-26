@@ -2,6 +2,8 @@
 
 namespace MediaWiki\Extension\Bucket;
 
+use MediaWiki\Extension\Bucket\Widgets\BucketFieldTextInputWidget;
+use MediaWiki\Extension\Bucket\Widgets\BucketOrderByTextInputWidget;
 use MediaWiki\Extension\Bucket\Widgets\BucketTextInputWidget;
 use MediaWiki\Html\TemplateParser;
 use MediaWiki\SpecialPage\SpecialPage;
@@ -39,8 +41,9 @@ class SpecialBucket extends SpecialPage {
 		);
 		// Select
 		$inputs[] = new OOUI\FieldLayout(
-			new OOUI\TextInputWidget(
+			new BucketFieldTextInputWidget(
 				[
+					'infusable' => true,
 					'name' => 'select',
 					'value' => $select,
 					'id' => 'bucket-select'
@@ -119,8 +122,9 @@ class SpecialBucket extends SpecialPage {
 			]
 		);
 		$orderByWidget = new OOUI\FieldLayout(
-			new OOUI\TextInputWidget(
+			new BucketOrderByTextInputWidget(
 				[
+					'infusable' => true,
 					'name' => 'orderby',
 					'value' => $orderBy,
 					'id' => 'bucket-orderby',
@@ -148,7 +152,8 @@ class SpecialBucket extends SpecialPage {
 
 				] ),
 				[
-					'label' => ' '
+					'label' => ' ',
+					'classes' => [ 'bucket-submit' ]
 				]
 		);
 
@@ -174,11 +179,13 @@ class SpecialBucket extends SpecialPage {
 		$out->addModuleStyles( 'ext.bucket.bucketpage.styles' );
 		$out->addModuleStyles( 'ext.bucket.specialbucket.styles' );
 		$out->addModules( 'mw.widgets.BucketInputWidget' );
+		$out->addModules( 'mw.widgets.BucketFieldInputWidget' );
+		$out->addModules( 'mw.widgets.BucketOrderByInputWidget' );
 		$out->setPageTitle( $out->msg( 'bucket' )->text() );
 		$out->addHelpLink( 'https://meta.weirdgloop.org/Extension:Bucket/Bucket browse', true );
 
 		$bucket = $request->getText( 'bucket', '' );
-		$select = $request->getText( 'select', '*' );
+		$select = $request->getText( 'select', '' );
 		$where = $request->getText( 'where', '' );
 		$limit = $request->getInt( 'limit', 20 );
 		$offset = $request->getInt( 'offset', 0 );

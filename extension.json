@@ -95,6 +95,22 @@
 				"oojs-ui-widgets",
 				"mediawiki.widgets"
 			]
+		},
+		"mw.widgets.BucketFieldInputWidget": {
+			"scripts": "resources/mw.widgets.BucketFieldInputWidget.js",
+			"dependencies" : [
+				"oojs-ui-core",
+				"oojs-ui-widgets",
+				"mediawiki.widgets"
+			]
+		},
+		"mw.widgets.BucketOrderByInputWidget": {
+			"scripts": "resources/mw.widgets.BucketOrderByInputWidget.js",
+			"dependencies" : [
+				"oojs-ui-core",
+				"oojs-ui-widgets",
+				"mediawiki.widgets"
+			]
 		}
 	},
 	"config": {
