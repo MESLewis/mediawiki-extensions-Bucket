@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Extension\Bucket;
 
+use MediaWiki\Extension\Bucket\Widgets\BucketTextInputWidget;
 use MediaWiki\Html\TemplateParser;
 use MediaWiki\SpecialPage\SpecialPage;
 use OOUI;
@@ -26,10 +27,12 @@ class SpecialBucket extends SpecialPage {
 	private function getQueryBuilder( $bucket, $select, $where, $limit, $offset ) {
 		$inputs = [];
 		$inputs[] = new OOUI\FieldLayout(
-			new OOUI\TextInputWidget(
+			new BucketTextInputWidget(
 				[
+					'infusable' => true,
 					'name' => 'bucket',
-					'value' => $bucket
+					'value' => $bucket,
+					'id' => 'bucket-input',
 				]
 			),
 			[
@@ -43,6 +46,7 @@ class SpecialBucket extends SpecialPage {
 				[
 					'name' => 'select',
 					'value' => $select,
+					'id' => 'bucket-select'
 				]
 			),
 			[
@@ -52,10 +56,11 @@ class SpecialBucket extends SpecialPage {
 			]
 		);
 		$inputs[] = new OOUI\FieldLayout(
-			new OOUI\TextInputWidget(
+			new OOUI\MultilineTextInputWidget(
 				[
 					'name' => 'where',
 					'value' => $where,
+					'id' => 'bucket-where'
 				]
 			),
 			[
@@ -70,7 +75,8 @@ class SpecialBucket extends SpecialPage {
 					'name' => 'limit',
 					'value' => $limit,
 					'min' => 1,
-					'max' => 500
+					'max' => 5000,
+					'id' => 'bucket-limit'
 				]
 			),
 			[
@@ -84,7 +90,8 @@ class SpecialBucket extends SpecialPage {
 				[
 					'name' => 'offset',
 					'value' => $offset,
-					'min' => 0
+					'min' => 0,
+					'id' => 'bucket-offset'
 				]
 			),
 			[
@@ -93,6 +100,40 @@ class SpecialBucket extends SpecialPage {
 				'help' => $this->msg( 'bucket-view-help-offset' )
 			]
 		);
+		// Order by
+		$orderByDirection = new OOUI\FieldLayout(
+			// TODO read value from url
+			new OOUI\DropdownInputWidget( [
+				'options' => [
+					[ 'data' => 'asc', 'label' => 'Ascending' ],
+					[ 'data' => 'desc', 'label' => 'Descending' ]
+				],
+				'id' => 'bucket-orderby-direction',
+			] ),
+			[
+				'classes' => [ 'bucket-orderby-direction' ]
+			]
+		);
+		$orderBy = new OOUI\FieldLayout(
+			new OOUI\TextInputWidget(
+				[
+					'name' => 'orderby',
+					'value' => '', // TODO
+					'id' => 'bucket-orderby',
+				]
+			)
+		);
+		$inputs[] = new OOUI\FieldLayout(
+			new OOUI\ButtonGroupWidget( [
+			'items' => [ $orderBy, $orderByDirection ],
+			'classes' => [ 'bucket-orderby-group' ]
+			] ),
+			[
+				'align' => 'right',
+				'label' => $this->msg( 'bucket-view-orderby' ),
+				'help' => $this->msg( 'bucket-view-help-orderby' ),
+				'classes' => [ 'bucket-orderby' ]
+			] );
 		$inputs[] = new OOUI\FieldLayout(
 			new OOUI\ButtonInputWidget(
 				[
@@ -126,6 +167,7 @@ class SpecialBucket extends SpecialPage {
 		$this->setHeaders();
 		$out->enableOOUI();
 		$out->addModuleStyles( 'ext.bucket.bucketpage.styles' );
+		$out->addModules( 'mw.widgets.BucketInputWidget' );
 		$out->setPageTitle( $out->msg( 'bucket' )->text() );
 		$out->addHelpLink( 'https://meta.weirdgloop.org/Extension:Bucket/Bucket browse', true );
 

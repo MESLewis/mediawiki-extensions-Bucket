@@ -84,6 +84,14 @@
 	"ResourceModules": {
 		"ext.bucket.bucketpage.styles": {
 			"styles": "resources/ext.bucket.bucketpage.styles.less"
+		},
+		"mw.widgets.BucketInputWidget": {
+			"scripts": "resources/mw.widgets.BucketInputWidget.js",
+			"dependencies" : [
+				"oojs-ui-core",
+				"oojs-ui-widgets",
+				"mediawiki.widgets"
+			]
 		}
 	},
 	"config": {
